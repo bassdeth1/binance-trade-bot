@@ -1,6 +1,7 @@
 import random
 import sys
 from datetime import datetime
+import concurrent.futures
 
 from binance_trade_bot.auto_trader import AutoTrader
 
@@ -18,8 +19,8 @@ class Strategy(AutoTrader):
         # Display on the console, the current coin+Bridge, so users can see *some* activity and not think the bot has
         # stopped. Not logging though to reduce log size.
         print(
-            f"{datetime.now()} - CONSOLE - INFO - I am scouting the best trades. "
-            f"Current coin: {current_coin + self.config.BRIDGE} ",
+            f"{datetime.now()} - CONSOLA - INFO - Estoy buscando los mejores intercambios. "
+            f"Moneda actual: {current_coin + self.config.BRIDGE} ",
             end="\r",
         )
 
@@ -40,7 +41,9 @@ class Strategy(AutoTrader):
             return
         new_coin = super().bridge_scout()
         if new_coin is not None:
-            self.db.set_current_coin(new_coin)
+            with concurrent.futures.ThreadPoolExecutor() as executor:
+                future = executor.submit(self.db.set_current_coin, new_coin)
+                future.result()  # Wait for the operation to complete.
 
     def initialize_current_coin(self):
         """
@@ -51,11 +54,13 @@ class Strategy(AutoTrader):
             if not current_coin_symbol:
                 current_coin_symbol = random.choice(self.config.SUPPORTED_COIN_LIST)
 
-            self.logger.info(f"Setting initial coin to {current_coin_symbol}")
+            self.logger.info(f"Estableciendo moneda inicial en {current_coin_symbol}")
 
             if current_coin_symbol not in self.config.SUPPORTED_COIN_LIST:
                 sys.exit("***\nERROR!\nSince there is no backup file, a proper coin name must be provided at init\n***")
-            self.db.set_current_coin(current_coin_symbol)
+            with concurrent.futures.ThreadPoolExecutor() as executor:
+                future = executor.submit(self.db.set_current_coin, current_coin_symbol)
+                future.result()  # Wait for the operation to complete.
 
             # if we don't have a configuration, we selected a coin at random... Buy it so we can start trading.
             if self.config.CURRENT_COIN_SYMBOL == "":
@@ -63,3 +68,4 @@ class Strategy(AutoTrader):
                 self.logger.info(f"Purchasing {current_coin} to begin trading")
                 self.manager.buy_alt(current_coin, self.config.BRIDGE)
                 self.logger.info("Ready to start trading")
+
